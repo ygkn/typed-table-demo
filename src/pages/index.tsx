@@ -1,31 +1,65 @@
-import { FC } from "react";
+import { FC, ReactNode, useState } from "react";
 
 import { Controller, useForm } from "react-hook-form";
 import { valibotResolver } from "@hookform/resolvers/valibot";
 import { isNonNullish } from "remeda";
 import * as v from "valibot";
-import { createTable } from "@/features/table/createTable";
+import {
+  createTable,
+  defineTableColumnFilter,
+  defineTableColumnFilterWithSchema,
+} from "@/features/table/createTable";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import * as ShadCNUiTable from "@/components/ui/table";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  ChevronDown,
+  Filter,
+  X,
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 const ageFilterFormValuesSchema = v.object({
   min: v.pipe(v.string(), v.regex(/^[0-9]*$/)),
   max: v.pipe(v.string(), v.regex(/^[0-9]*$/)),
 });
 
-const ageFilterSchema = v.object({
-  min: v.optional(v.number()),
-  max: v.optional(v.number()),
-});
+// AgeFilterの型定義（実際に利用するスキーマ）
+type AgeFilter = {
+  min?: number;
+  max?: number;
+};
 
-type AgeFilter = v.InferOutput<typeof ageFilterSchema>;
+type StatusFilterType = "active" | "inactive" | null;
+
+// ステータスフィルターのためのスキーマ定義
+const statusFilterSchema = v.union([
+  v.literal("active"),
+  v.literal("inactive"),
+  v.nullable(v.null()),
+]);
 
 const AgeFilterPopupContent: React.FC<{
   filter: AgeFilter;
   setFilter: (filter: AgeFilter) => void;
-}> = ({ filter, setFilter }) => {
+  onClose: () => void;
+}> = ({ filter, setFilter, onClose }) => {
   const { register, handleSubmit } = useForm({
     resolver: valibotResolver(ageFilterFormValuesSchema),
     defaultValues: {
@@ -39,6 +73,7 @@ const AgeFilterPopupContent: React.FC<{
       min: data.min === "" ? undefined : Number(data.min),
       max: data.max === "" ? undefined : Number(data.max),
     });
+    onClose();
   };
 
   return (
@@ -63,9 +98,10 @@ const statusFilterFormValuesSchema = v.object({
 });
 
 const StatusFilterPopupContent: React.FC<{
-  filter: "active" | "inactive" | null;
-  setFilter: (filter: "active" | "inactive" | null) => void;
-}> = ({ filter, setFilter }) => {
+  filter: StatusFilterType;
+  setFilter: (filter: StatusFilterType) => void;
+  onClose: () => void;
+}> = ({ filter, setFilter, onClose }) => {
   const { handleSubmit, control } = useForm<
     v.InferOutput<typeof statusFilterFormValuesSchema>
   >({
@@ -79,6 +115,7 @@ const StatusFilterPopupContent: React.FC<{
     data: v.InferOutput<typeof statusFilterFormValuesSchema>
   ) => {
     setFilter(data.status === "all" ? null : data.status);
+    onClose();
   };
 
   return (
@@ -229,133 +266,331 @@ const useUserData = (query: {
   };
 };
 
-const define = createTable<TableViewModel>();
-const { useTableState, Table } = define.table({
-  key: "tableKey",
+// 列キーの型定義
+type TableColumnKey = "name" | "age" | "email" | "status";
 
-  pagination: {
-    parPage: 10,
+// テーブルインスタンスを作成
+const table = createTable([
+  {
+    key: "name" as const,
+    filter: null,
+    sortable: true,
+    initialVisibility: true,
+    renderHeadCell() {
+      return "Name";
+    },
   },
-
-  keywordSearch: {
-    renderSearchInput({ value, onChange }) {
-      return <KeywordSearch keyword={value} setKeyword={onChange} />;
+  {
+    key: "age" as const,
+    filter: defineTableColumnFilter<AgeFilter>({
+      renderPopupContent: ({ filter, setFilter, onClose }) => {
+        return (
+          <AgeFilterPopupContent
+            filter={filter ?? { min: undefined, max: undefined }}
+            setFilter={setFilter}
+            onClose={onClose}
+          />
+        );
+      },
+      renderFilterChipContent: ({ filter }) => [
+        isNonNullish(filter.min) && `min: ${filter.min}`,
+        isNonNullish(filter.max) && `max: ${filter.max}`,
+      ],
+      initial: { min: undefined, max: undefined },
+      encodeForUrl: (filter) => {
+        return `${filter.min ?? ""}~${filter.max ?? ""}`;
+      },
+      decodeFromUrl: (encoded) => {
+        const [min, max] = encoded.split("~");
+        return {
+          min: min ? Number(min) : undefined,
+          max: max ? Number(max) : undefined,
+        };
+      },
+    }),
+    sortable: true,
+    initialVisibility: true,
+    renderHeadCell() {
+      return "Age";
     },
-    encode: (keyword) => keyword,
-    decode: (keyword) => keyword,
   },
-  columns: [
-    {
-      key: "name",
-      filter: null,
-      sortable: true,
-      visibility: {
-        initialVisibility: true,
-      },
-      renderHeadCell() {
-        return "Name";
-      },
-      renderBodyCell({ row }) {
-        return <>{row.name}</>;
-      },
+  {
+    key: "email" as const,
+    filter: null,
+    sortable: true,
+    initialVisibility: true,
+    renderHeadCell() {
+      return "Email";
     },
-    {
-      key: "age",
-      filter: define.columnFilter<AgeFilter>({
-        renderPopupContent: ({ filter, setFilter }) => {
-          return (
-            <AgeFilterPopupContent
-              filter={filter ?? { min: undefined, max: undefined }}
-              setFilter={setFilter}
-            />
-          );
-        },
-        renderFilterChipContent: ({ filter }) => [
-          isNonNullish(filter.min) && `min: ${filter.min}`,
-          isNonNullish(filter.max) && `max: ${filter.max}`,
-        ],
-        encode: (filter) => filter,
-        decode: (filter) => {
-          const result = v.safeParse(ageFilterSchema, filter);
-
-          if (result.success) {
-            return result.output;
-          }
-
-          return null;
-        },
-        initial: null,
-      }),
-      sortable: true,
-      visibility: {
-        initialVisibility: true,
+  },
+  {
+    key: "status" as const,
+    filter: defineTableColumnFilterWithSchema(statusFilterSchema, {
+      renderPopupContent: ({ filter, setFilter, onClose }) => {
+        return (
+          <StatusFilterPopupContent
+            filter={filter}
+            setFilter={setFilter}
+            onClose={onClose}
+          />
+        );
       },
-
-      renderHeadCell() {
-        return "Age";
-      },
-
-      renderBodyCell({ row }) {
-        return <>{row.age}</>;
-      },
+      renderFilterChipContent: ({ filter }) => filter ?? "all",
+      initial: null,
+    }),
+    sortable: true,
+    initialVisibility: true,
+    renderHeadCell() {
+      return "Status";
     },
+  },
+] as const);
 
-    {
-      key: "email",
-      filter: null,
-      sortable: true,
-      visibility: {
-        initialVisibility: true,
-      },
-      renderHeadCell() {
-        return "Email";
-      },
-      renderBodyCell({ row }) {
-        return <>{row.email}</>;
-      },
-    },
-    {
-      key: "status",
-      filter: define.columnFilter<"active" | "inactive" | null>({
-        renderPopupContent: ({ filter, setFilter }) => {
-          return (
-            <StatusFilterPopupContent filter={filter} setFilter={setFilter} />
-          );
-        },
-        renderFilterChipContent: ({ filter }) => filter ?? "all",
-        encode: (filter) => filter ?? "all",
-        decode: (filter) =>
-          filter === "active" || filter === "inactive" ? filter : null,
-        initial: null,
-      }),
-      sortable: true,
-      visibility: {
-        initialVisibility: true,
-      },
-      renderHeadCell() {
-        return "Status";
-      },
-      renderBodyCell({ row }) {
-        return <>{row.status}</>;
-      },
-    },
-  ],
-} as const);
+// テーブルコンポーネント
+const Table: FC<{
+  data: TableViewModel[];
+  totalCount: number;
+}> = ({ data, totalCount }) => {
+  const { state, actions } = table.useTable();
+  const [openedFilterColumnKey, setOpenedFilterColumnKey] = useState<
+    "age" | "status" | null
+  >(null);
+
+  const visibleColumns = table.columnDefinitions.filter((column) =>
+    state.columnVisibility.includes(column.key)
+  );
+
+  const filteringColumns = visibleColumns.filter(
+    (column) =>
+      column.filter !== null &&
+      state.filter[column.key as keyof typeof state.filter] !== null
+  );
+
+  // レンダリングのヘルパー関数
+  const renderFilterChipContent = (
+    column: (typeof table.columnDefinitions)[number]
+  ): ReactNode => {
+    if (!column.filter) return null;
+
+    switch (column.key) {
+      case "age":
+        if (state.filter.age) {
+          return column.filter.renderFilterChipContent({
+            filter: state.filter.age,
+          });
+        }
+        break;
+      case "status":
+        if (state.filter.status) {
+          return column.filter.renderFilterChipContent({
+            filter: state.filter.status,
+          });
+        }
+        break;
+    }
+    return null;
+  };
+
+  // フィルターポップアップの内容をレンダリングする関数
+  const renderFilterPopupContent = (
+    column: (typeof table.columnDefinitions)[number]
+  ): ReactNode => {
+    if (!column.filter) return null;
+
+    switch (column.key) {
+      case "age":
+        return column.filter.renderPopupContent({
+          filter: state.filter.age ?? null,
+          setFilter: (filter) => {
+            actions.setFilter("age", filter);
+            setOpenedFilterColumnKey(null);
+          },
+          onClose: () => setOpenedFilterColumnKey(null),
+        });
+      case "status":
+        return column.filter.renderPopupContent({
+          filter: state.filter.status ?? null,
+          setFilter: (filter) => {
+            actions.setFilter("status", filter);
+            setOpenedFilterColumnKey(null);
+          },
+          onClose: () => setOpenedFilterColumnKey(null),
+        });
+      default:
+        return null;
+    }
+  };
+
+  // フィルターをクリアする関数
+  const clearFilter = (column: TableColumnKey) => {
+    if (column === "age" || column === "status") {
+      actions.setFilter(column, null);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-4">
+        <KeywordSearch
+          keyword={state.keywordSearch ?? ""}
+          setKeyword={actions.setKeywordSearch}
+        />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="ml-auto">
+              Columns <ChevronDown />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {table.columnDefinitions.map((column) => (
+              <DropdownMenuCheckboxItem
+                key={column.key}
+                checked={state.columnVisibility.includes(column.key)}
+                onCheckedChange={(checked) =>
+                  actions.setColumnVisibility(column.key, checked)
+                }
+              >
+                {column.renderHeadCell()}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {filteringColumns.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {filteringColumns.map((column) => (
+            <div
+              key={column.key}
+              className="flex items-center gap-1 bg-primary-foreground text-primary-background rounded-full px-2"
+            >
+              <div>{column.renderHeadCell()}</div>
+              {renderFilterChipContent(column)}
+              <Button variant="ghost" onClick={() => clearFilter(column.key)}>
+                <X aria-label="clear" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <ShadCNUiTable.Table>
+        <ShadCNUiTable.TableHeader>
+          <ShadCNUiTable.TableRow>
+            {visibleColumns.map((column) => (
+              <ShadCNUiTable.TableHead key={column.key}>
+                {column.renderHeadCell()}
+                {column.sortable && (
+                  <Button
+                    onClick={() => actions.toggleSort(column.key)}
+                    variant="ghost"
+                  >
+                    {state.sort.sortBy === column.key ? (
+                      state.sort.sortOrder === "asc" ? (
+                        <ArrowDown />
+                      ) : (
+                        <ArrowUp />
+                      )
+                    ) : (
+                      <ArrowUpDown />
+                    )}
+                  </Button>
+                )}
+                {column.filter && (
+                  <Popover
+                    open={openedFilterColumnKey === column.key}
+                    onOpenChange={(open) =>
+                      setOpenedFilterColumnKey(
+                        open ? (column.key as "age" | "status") : null
+                      )
+                    }
+                  >
+                    <PopoverTrigger asChild>
+                      <Button variant="ghost">
+                        <Filter />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverAnchor>
+                      <PopoverContent>
+                        {renderFilterPopupContent(column)}
+                      </PopoverContent>
+                    </PopoverAnchor>
+                  </Popover>
+                )}
+              </ShadCNUiTable.TableHead>
+            ))}
+          </ShadCNUiTable.TableRow>
+        </ShadCNUiTable.TableHeader>
+        <ShadCNUiTable.TableBody>
+          {data.map((row, rowIndex) => (
+            <ShadCNUiTable.TableRow key={rowIndex}>
+              {visibleColumns.map((column) => (
+                <ShadCNUiTable.TableCell key={column.key}>
+                  {renderCell(column.key as TableColumnKey, row)}
+                </ShadCNUiTable.TableCell>
+              ))}
+            </ShadCNUiTable.TableRow>
+          ))}
+        </ShadCNUiTable.TableBody>
+      </ShadCNUiTable.Table>
+
+      <div className="flex items-center justify-end space-x-2 pt-4">
+        <div className="flex-1 text-sm text-muted-foreground">
+          {`Page ${state.pagination} of ${Math.ceil(
+            totalCount / 10
+          )}, Total ${totalCount} items`}
+        </div>
+        <div className="space-x-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => actions.setPagination(state.pagination - 1)}
+            disabled={state.pagination === 1}
+          >
+            Previous
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => actions.setPagination(state.pagination + 1)}
+            disabled={state.pagination === Math.ceil(totalCount / 10)}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// セル内容のレンダリング関数
+const renderCell = (key: TableColumnKey, row: TableViewModel) => {
+  switch (key) {
+    case "name":
+      return row.name;
+    case "age":
+      return row.age;
+    case "email":
+      return row.email;
+    case "status":
+      return row.status;
+    default:
+      return null;
+  }
+};
 
 const Home: FC = () => {
-  const tableState = useTableState();
-
-  console.log(tableState);
+  const { state } = table.useTable();
 
   const { data, totalCount } = useUserData({
     limit: 10,
-    offset: (tableState.pagination - 1) * 10,
-    keyword: tableState.keywordSearch ?? "",
-    minAge: tableState.filter.age?.min ?? null,
-    maxAge: tableState.filter.age?.max ?? null,
-    status: tableState.filter.status ?? null,
-    sortBy: tableState.sort?.sortBy ?? null,
-    sortDirection: tableState.sort?.sortOrder ?? null,
+    offset: (state.pagination - 1) * 10,
+    keyword: state.keywordSearch ?? "",
+    minAge: state.filter.age?.min ?? null,
+    maxAge: state.filter.age?.max ?? null,
+    status: state.filter.status ?? null,
+    sortBy: state.sort.sortBy,
+    sortDirection: state.sort.sortOrder,
   });
 
   return (
