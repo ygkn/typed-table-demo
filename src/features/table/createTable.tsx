@@ -158,7 +158,15 @@ type TableState<Columns extends readonly ColumnDefinition[]> = {
   filter: FilterTypeMap<Columns>;
 };
 
-const queryKeys = {
+// テーブルのオプション型定義
+export type TableOptions = {
+  /**
+   * テーブル名（設定時、クエリパラメータに${tableName}_プレフィックスが付きます）
+   */
+  tableName?: string;
+};
+
+const baseQueryKeys = {
   keywordSearch: "keyword",
   sortBy: "sortBy",
   sortOrder: "sortOrder",
@@ -169,7 +177,20 @@ const queryKeys = {
 
 export function createTable<
   const Columns extends readonly ColumnDefinition<string>[]
->(columnDefinitions: Columns) {
+>(columnDefinitions: Columns, options?: TableOptions) {
+  // テーブル名からプレフィックスを生成
+  const prefix = options?.tableName ? `${options.tableName}_` : "";
+
+  // プレフィックス付きのクエリキーを生成
+  const queryKeys = {
+    keywordSearch: `${prefix}${baseQueryKeys.keywordSearch}`,
+    sortBy: `${prefix}${baseQueryKeys.sortBy}`,
+    sortOrder: `${prefix}${baseQueryKeys.sortOrder}`,
+    columnVisibility: `${prefix}${baseQueryKeys.columnVisibility}`,
+    page: `${prefix}${baseQueryKeys.page}`,
+    filterPrefix: `${prefix}${baseQueryKeys.filterPrefix}`,
+  };
+
   // テーブルの状態を管理するフック
   const useTable = () => {
     const searchParams = useSearchParams();
