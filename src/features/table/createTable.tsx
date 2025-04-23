@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import * as v from "valibot";
 
@@ -233,8 +233,7 @@ export function createTable<
     const searchParams = useSearchParams();
     const router = useRouter();
 
-    // クエリパラメータから状態を取得
-    const getTableState = (): TableState<Columns> => {
+    const tableState = useMemo<TableState<Columns>>(() => {
       // キーワード検索
       const keywordSearch = searchParams.get(queryKeys.keywordSearch);
 
@@ -314,118 +313,113 @@ export function createTable<
         pagination,
         filter,
       };
-    };
+    }, [searchParams]);
 
-    // 状態を更新する関数
-    const setKeywordSearch = (keyword: string) => {
-      const newParams = new URLSearchParams(searchParams);
-      if (keyword) {
-        newParams.set(queryKeys.keywordSearch, keyword);
-      } else {
-        newParams.delete(queryKeys.keywordSearch);
-      }
-      newParams.delete(queryKeys.page);
-      router.push(`?${newParams.toString()}`);
-    };
+    // アクション関数も必要に応じてメモ化
+    const actions = useMemo(
+      () => ({
+        setKeywordSearch: (keyword: string) => {
+          const newParams = new URLSearchParams(searchParams);
+          if (keyword) {
+            newParams.set(queryKeys.keywordSearch, keyword);
+          } else {
+            newParams.delete(queryKeys.keywordSearch);
+          }
+          newParams.delete(queryKeys.page);
+          router.push(`?${newParams.toString()}`);
+        },
+        setSort: (
+          sortBy: SortableColumnKeys<Columns> | null,
+          sortOrder: "asc" | "desc" | null
+        ) => {
+          const newParams = new URLSearchParams(searchParams);
+          if (sortBy && sortOrder) {
+            newParams.set(queryKeys.sortBy, sortBy as string);
+            newParams.set(queryKeys.sortOrder, sortOrder);
+          } else {
+            newParams.delete(queryKeys.sortBy);
+            newParams.delete(queryKeys.sortOrder);
+          }
+          router.push(`?${newParams.toString()}`);
+        },
+        toggleSort: (sortBy: SortableColumnKeys<Columns>) => {
+          const state = tableState;
+          if (state.sort.sortBy === sortBy) {
+            if (state.sort.sortOrder === "asc") {
+              actions.setSort(sortBy, "desc");
+            } else {
+              actions.setSort(null, null);
+            }
+          } else {
+            actions.setSort(sortBy, "asc");
+          }
+        },
+        setColumnVisibility: (
+          columnKey: ExtractColumnKeys<Columns>,
+          isVisible: boolean
+        ) => {
+          const state = tableState;
+          let newVisibleColumns: ExtractColumnKeys<Columns>[];
 
-    const setSort = (
-      sortBy: SortableColumnKeys<Columns> | null,
-      sortOrder: "asc" | "desc" | null
-    ) => {
-      const newParams = new URLSearchParams(searchParams);
-      if (sortBy && sortOrder) {
-        newParams.set(queryKeys.sortBy, sortBy as string);
-        newParams.set(queryKeys.sortOrder, sortOrder);
-      } else {
-        newParams.delete(queryKeys.sortBy);
-        newParams.delete(queryKeys.sortOrder);
-      }
-      router.push(`?${newParams.toString()}`);
-    };
+          if (isVisible) {
+            newVisibleColumns = [...state.columnVisibility, columnKey];
+          } else {
+            newVisibleColumns = state.columnVisibility.filter(
+              (col) => col !== columnKey
+            );
+          }
 
-    const toggleSort = (sortBy: SortableColumnKeys<Columns>) => {
-      const state = getTableState();
-      if (state.sort.sortBy === sortBy) {
-        if (state.sort.sortOrder === "asc") {
-          setSort(sortBy, "desc");
-        } else {
-          setSort(null, null);
-        }
-      } else {
-        setSort(sortBy, "asc");
-      }
-    };
+          // 少なくとも1つの列は表示されるようにする
+          if (newVisibleColumns.length === 0) return;
 
-    const setColumnVisibility = (
-      columnKey: ExtractColumnKeys<Columns>,
-      isVisible: boolean
-    ) => {
-      const state = getTableState();
-      let newVisibleColumns: ExtractColumnKeys<Columns>[];
-
-      if (isVisible) {
-        newVisibleColumns = [...state.columnVisibility, columnKey];
-      } else {
-        newVisibleColumns = state.columnVisibility.filter(
-          (col) => col !== columnKey
-        );
-      }
-
-      // 少なくとも1つの列は表示されるようにする
-      if (newVisibleColumns.length === 0) return;
-
-      const newParams = new URLSearchParams(searchParams);
-      newParams.set(queryKeys.columnVisibility, newVisibleColumns.join(","));
-      router.push(`?${newParams.toString()}`);
-    };
-
-    // 型安全なフィルター設定
-    const setFilter = <K extends FilterableColumnKeys<Columns>>(
-      columnKey: K,
-      filterValue: FilterTypeByColumnKey<Columns, K> | null
-    ): void => {
-      const newParams = new URLSearchParams(searchParams);
-      const filterParamKey = `${queryKeys.filterPrefix}${columnKey}`;
-
-      if (filterValue === null) {
-        // フィルターを削除
-        newParams.delete(filterParamKey);
-      } else {
-        // カラム定義を取得
-        const columnDef = columnDefinitions.find(
-          (col) => col.key === columnKey
-        );
-
-        if (columnDef?.filter) {
-          // フィルター値をエンコード
-          const encodedValue = columnDef.filter.encodeForUrl(
-            filterValue as FilterTypeByColumnKey<Columns, K>
+          const newParams = new URLSearchParams(searchParams);
+          newParams.set(
+            queryKeys.columnVisibility,
+            newVisibleColumns.join(",")
           );
-          newParams.set(filterParamKey, encodedValue);
-        }
-      }
+          router.push(`?${newParams.toString()}`);
+        },
+        setFilter: <K extends FilterableColumnKeys<Columns>>(
+          columnKey: K,
+          filterValue: FilterTypeByColumnKey<Columns, K> | null
+        ): void => {
+          const newParams = new URLSearchParams(searchParams);
+          const filterParamKey = `${queryKeys.filterPrefix}${columnKey}`;
 
-      // ページをリセット
-      newParams.delete(queryKeys.page);
-      router.push(`?${newParams.toString()}`);
-    };
+          if (filterValue === null) {
+            // フィルターを削除
+            newParams.delete(filterParamKey);
+          } else {
+            // カラム定義を取得
+            const columnDef = columnDefinitions.find(
+              (col) => col.key === columnKey
+            );
 
-    const setPagination = (page: number) => {
-      const newParams = new URLSearchParams(searchParams);
-      newParams.set(queryKeys.page, page.toString());
-      router.push(`?${newParams.toString()}`);
-    };
+            if (columnDef?.filter) {
+              // フィルター値をエンコード
+              const encodedValue = columnDef.filter.encodeForUrl(
+                filterValue as FilterTypeByColumnKey<Columns, K>
+              );
+              newParams.set(filterParamKey, encodedValue);
+            }
+          }
+
+          // ページをリセット
+          newParams.delete(queryKeys.page);
+          router.push(`?${newParams.toString()}`);
+        },
+        setPagination: (page: number) => {
+          const newParams = new URLSearchParams(searchParams);
+          newParams.set(queryKeys.page, page.toString());
+          router.push(`?${newParams.toString()}`);
+        },
+      }),
+      [searchParams, router, tableState]
+    );
 
     return {
-      state: getTableState(),
-      actions: {
-        setKeywordSearch,
-        setSort,
-        toggleSort,
-        setColumnVisibility,
-        setFilter,
-        setPagination,
-      },
+      state: tableState,
+      actions,
     };
   };
 
