@@ -69,61 +69,82 @@ export type ColumnDefinition<
   renderHeadCell: () => ReactNode;
 };
 
+/**
+ * 配列の要素型を取得するユーティリティ型
+ * 例: [1, 2, 3] の配列から 1 | 2 | 3 のユニオン型を取得
+ */
 type ArrayElementUnion<T extends readonly unknown[]> = T[number];
 
-// 列キーを抽出するユーティリティ型
+/**
+ * カラム定義配列から列キーのユニオン型を抽出するユーティリティ型
+ * 例: カラム定義配列から "id" | "name" | "createdAt" のようなキー型を取得
+ */
 type ExtractColumnKeys<Columns extends readonly ColumnDefinition[]> =
   ArrayElementUnion<Columns>["key"];
 
-// filterがnullでないカラムのキーのみ抽出
-type FilterableColumnKeys<Columns extends readonly ColumnDefinition[]> = {
-  [K in keyof Columns as number]: Columns[K] extends ColumnDefinition<
-    infer ColumnKey,
-    infer FilterDefinition
-  >
-    ? null extends FilterDefinition
-      ? never
-      : ColumnKey
-    : never;
-}[number];
+/**
+ * カラム定義からフィルター機能を持つカラムを抽出する型
+ * filterプロパティがnullでないカラム定義を抽出
+ */
+type FilterableColumn<Column> = Column extends ColumnDefinition<
+  string,
+  infer FilterDefinition
+>
+  ? null extends FilterDefinition
+    ? never
+    : Column
+  : never;
 
-type SortableColumnKeys<Columns extends readonly ColumnDefinition[]> = {
-  [K in keyof Columns as number]: Columns[K] extends ColumnDefinition<
-    infer ColumnKey
-  > & { sortable: true }
-    ? ColumnKey
-    : never;
-}[number];
+/**
+ * フィルター可能なカラムからカラムキーのみを抽出する型
+ */
+type FilterableColumnKeys<Columns extends readonly ColumnDefinition[]> =
+  FilterableColumn<ArrayElementUnion<Columns>>["key"];
 
+/**
+ * ソート可能なカラムを抽出する型
+ * sortableプロパティがtrueのカラム定義を抽出
+ */
+type SortableColumn<Column> = Column extends ColumnDefinition<string> & {
+  sortable: true;
+}
+  ? Column
+  : never;
+
+/**
+ * ソート可能なカラムからカラムキーのみを抽出する型
+ */
+type SortableColumnKeys<Columns extends readonly ColumnDefinition[]> =
+  SortableColumn<ArrayElementUnion<Columns>>["key"];
+
+/**
+ * カラム定義からフィルター条件の型を抽出する型
+ */
+type ExtractFilterCondition<Column> = Column extends ColumnDefinition<
+  string,
+  infer FilterDefinition
+>
+  ? FilterDefinition extends ColumnFilterDefinition<infer FilterCondition>
+    ? FilterCondition | null
+    : never
+  : never;
+
+/**
+ * 特定のカラムキーに対応するフィルター条件型を取得する型
+ */
 type FilterTypeByColumnKey<
   Columns extends readonly ColumnDefinition[],
   ColumnKey extends FilterableColumnKeys<Columns>
-> = ColumnKey extends ExtractColumnKeys<Columns>
-  ? {
-      [Column in Columns[number] as number]: Column extends ColumnDefinition<
-        ColumnKey,
-        infer FilterDefinition
-      >
-        ? FilterDefinition extends ColumnFilterDefinition<infer FilterCondition>
-          ? FilterCondition | null
-          : never
-        : never;
-    }[number]
-  : never;
+> = ExtractFilterCondition<
+  Extract<ArrayElementUnion<Columns>, { key: ColumnKey }>
+>;
 
-// カラム定義からフィルター型を抽出するユーティリティ型
+/**
+ * カラム定義配列からフィルター型マップを構築するユーティリティ型
+ * カラムキーとそれに対応するフィルター条件型のマッピングを作成
+ */
 type FilterTypeMap<Columns extends readonly ColumnDefinition[]> = {
-  [Column in Columns[number] as Column extends ColumnDefinition<
-    string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ColumnFilterDefinition<any>
-  >
-    ? Column["key"]
-    : never]: Column extends ColumnDefinition<string, infer FilterDefinition>
-    ? FilterDefinition extends ColumnFilterDefinition<infer FilterCondition>
-      ? FilterCondition | null
-      : never
-    : never;
+  [Key in FilterableColumnKeys<Columns>]: FilterTypeByColumnKey<Columns, Key>;
 };
 
 type TableState<Columns extends readonly ColumnDefinition[]> = {
