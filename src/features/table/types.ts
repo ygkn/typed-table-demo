@@ -150,13 +150,3 @@ export type TableOptions = {
    */
   queryParamPrefix?: string;
 };
-
-// クエリキー定義
-export const baseQueryKeys = {
-  keywordSearch: "keyword",
-  sortBy: "sortBy",
-  sortOrder: "sortOrder",
-  columnVisibility: "columns",
-  page: "page",
-  filterPrefix: "f_",
-};
