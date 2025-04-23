@@ -175,6 +175,43 @@ const baseQueryKeys = {
   filterPrefix: "f_",
 };
 
+/**
+ * テーブルコンポーネントファクトリー関数
+ *
+ * このAPIは型安全なテーブルコンポーネントを作成します。
+ * テーブルの状態（ソート、フィルター、表示列など）はURLパラメータに格納され、
+ * ページリロードやリンク共有時に保持されます。
+ *
+ * @example
+ * ```tsx
+ * // 基本的な使用法
+ * const userTable = createTable([
+ *   {
+ *     key: 'name',
+ *     renderHeadCell: () => <span>名前</span>,
+ *     filter: defineTableColumnFilter<StringFilter>({
+ *       // フィルター定義
+ *     }),
+ *     sortable: true,
+ *     initialVisibility: true
+ *   },
+ *   // 他の列...
+ * ]);
+ *
+ * // コンポーネント内で使用
+ * function UserList() {
+ *   const { state, actions } = userTable.useTable();
+ *   const { openedFilterColumnKey, setOpenedFilterColumnKey } = userTable.useFilterPopup();
+ *
+ *   // レンダリングロジック...
+ * }
+ * ```
+ *
+ * @template Columns - カラム定義の配列型
+ * @param columnDefinitions - テーブルのカラム定義配列
+ * @param options - テーブルのオプション設定
+ * @returns テーブルインスタンス（フックとヘルパー関数を含む）
+ */
 export function createTable<
   const Columns extends readonly ColumnDefinition<string>[]
 >(columnDefinitions: Columns, options?: TableOptions) {
@@ -407,6 +444,31 @@ export function createTable<
   };
 }
 
+/**
+ * テーブルの列にフィルター機能を追加するための定義を作成します
+ *
+ * @example
+ * ```tsx
+ * // 文字列検索フィルターの定義
+ * const nameFilter = defineTableColumnFilter<StringFilter>({
+ *   renderPopupContent: ({ filter, setFilter, onClose }) => (
+ *     <StringFilterInput
+ *       value={filter?.text || ''}
+ *       onChange={(text) => setFilter(text ? { text, mode: 'contains' } : null)}
+ *       onClose={onClose}
+ *     />
+ *   ),
+ *   renderFilterChipContent: ({ filter }) => (
+ *     <span>名前に「{filter.text}」を含む</span>
+ *   ),
+ *   initial: null
+ * });
+ * ```
+ *
+ * @template FilterCondition - フィルター条件の型
+ * @param columnFilterDefinition - フィルター定義オブジェクト
+ * @returns 完全なフィルター定義
+ */
 export const defineTableColumnFilter = <FilterCondition,>(
   columnFilterDefinition: Omit<
     ColumnFilterDefinition<FilterCondition>,
