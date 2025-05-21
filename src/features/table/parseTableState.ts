@@ -129,7 +129,7 @@ const parseFilters = <Columns extends readonly ColumnDefinition[]>(
     columnDefinitions.forEach((col) => {
       const colKey = col.key as ExtractColumnKeys<Columns>;
 
-      if (col.filter) {
+      if (col.filter !== null) {
         const filterParamKey = `${queryKeys.filterPrefix}${colKey}`;
         const encodedFilterValue = searchParams.get(filterParamKey);
 
@@ -142,6 +142,8 @@ const parseFilters = <Columns extends readonly ColumnDefinition[]>(
           } catch (error) {
             console.error(`Failed to decode filter for ${colKey}:`, error);
           }
+        } else {
+          (filter as Record<string, unknown>)[colKey] = null;
         }
       }
     });
